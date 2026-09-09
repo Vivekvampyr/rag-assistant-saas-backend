@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document
-from app.services.ingestion import process_document
+from app.workers.document_tasks import process_document_task
 
 
 router = APIRouter(
@@ -37,9 +37,6 @@ async def upload_document(
             detail="Only PDF files are supported.",
         )
 
-    upload_dir = Path(settings.UPLOAD_DIR)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     content = await file.read()
 
     if not content:
@@ -48,18 +45,16 @@ async def upload_document(
             detail="Uploaded file is empty.",
         )
 
-    # --------------------------------------------------
-    # Save original file
-    # --------------------------------------------------
+    upload_dir = Path(settings.UPLOAD_DIR)
+    upload_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     unique_filename = f"{uuid4().hex}{extension}"
     file_path = upload_dir / unique_filename
 
     file_path.write_bytes(content)
-
-    # --------------------------------------------------
-    # Create document record
-    # --------------------------------------------------
 
     document = Document(
         filename=file.filename,
@@ -72,29 +67,14 @@ async def upload_document(
     db.commit()
     db.refresh(document)
 
-    # --------------------------------------------------
-    # Process document
-    # --------------------------------------------------
-
-    try:
-
-        process_document(
-            document=document,
-            db=db,
-            file_path=file_path,
-        )
-
-    except Exception as exc:
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Document processing failed: {str(exc)}",
-        )
+    # Queue background processing.
+    process_document_task.delay(
+        document_id=document.id,
+        file_path=str(file_path),
+    )
 
     return {
         "document_id": document.id,
         "filename": document.filename,
         "status": document.status,
-        "total_pages": document.total_pages,
-        "total_chunks": document.total_chunks,
     }
