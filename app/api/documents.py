@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document
 from app.workers.document_tasks import process_document_task
+from sqlalchemy import select
 
 
 router = APIRouter(
@@ -78,3 +79,48 @@ async def upload_document(
         "filename": document.filename,
         "status": document.status,
     }
+
+
+@router.get("/{document_id}")
+def get_document(document_id: int, db: Session = Depends(get_db)):
+    document = db.get(Document, document_id)
+
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    return {
+        "id": document.id,
+        "filename": document.filename,
+        "file_type": document.file_type,
+        "file_size": document.file_size,
+        "status": document.status,
+        "total_pages": document.total_pages,
+        "total_chunks": document.total_chunks,
+        "created_at": document.created_at,
+        "updated_at": document.updated_at,
+    }
+
+@router.get("")
+def list_documents(
+    db: Session = Depends(get_db),
+):
+    documents = db.scalars(
+        select(Document).order_by(
+            Document.created_at.desc()
+        )
+    ).all()
+
+    return [
+        {
+            "id": document.id,
+            "filename": document.filename,
+            "file_type": document.file_type,
+            "file_size": document.file_size,
+            "status": document.status,
+            "total_pages": document.total_pages,
+            "total_chunks": document.total_chunks,
+            "created_at": document.created_at,
+            "updated_at": document.updated_at,
+        }
+        for document in documents
+    ]
