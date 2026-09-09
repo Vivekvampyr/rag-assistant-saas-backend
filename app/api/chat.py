@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-
+from sqlalchemy import select
 from app.core.database import get_db
 from app.services.generation import generate_answer
 from app.services.retrieval import retrieve_document_chunks
 
+from app.core.security import get_current_user
+from app.models.document import Document
+from app.models.user import User
 
 router = APIRouter(
     prefix="/chat",
@@ -21,12 +24,29 @@ class ChatRequest(BaseModel):
 @router.post("/ask")
 def ask_question(
     request: ChatRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+
+    if request.document_id is not None:
+        document = db.scalar(
+            select(Document).where(
+                Document.id == request.document_id,
+                Document.user_id == current_user.id,
+            )
+        )
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found.",
+        )
+    
     try:
         matches = retrieve_document_chunks(
             query=request.question,
             db=db,
+            user_id=current_user.id,
             top_k=5,
             similarity_threshold=0.40,
             document_id=request.document_id,

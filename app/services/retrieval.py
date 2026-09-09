@@ -7,6 +7,7 @@ from app.services.embeddings import embed_query
 def retrieve_document_chunks(
     query: str,
     db: Session,
+    user_id: int,
     top_k: int = 5,
     similarity_threshold: float = 0.40,
     document_id: int | None = None,
@@ -32,11 +33,13 @@ def retrieve_document_chunks(
         JOIN documents d
             ON d.id = dc.document_id
         WHERE d.status = 'COMPLETED'
+            AND d.user_id = :user_id
         """
 
     params = {
         "embedding": query_embedding,
         "top_k": top_k,
+        "user_id": user_id,
     }
 
     if document_id is not None:

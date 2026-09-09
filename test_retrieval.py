@@ -8,6 +8,7 @@ try:
     results = retrieve_document_chunks(
         query="Who is Vivek?",
         db=db,
+        user_id=1,
         top_k=5,
     )
 

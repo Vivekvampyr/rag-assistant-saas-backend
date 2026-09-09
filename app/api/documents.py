@@ -10,6 +10,8 @@ from app.models.document import Document
 from app.workers.document_tasks import process_document_task
 from sqlalchemy import select
 
+from app.core.security import get_current_user
+from app.models.user import User
 
 router = APIRouter(
     prefix="/documents",
@@ -22,6 +24,7 @@ ALLOWED_EXTENSIONS = {".pdf"}
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if not file.filename:
@@ -58,6 +61,7 @@ async def upload_document(
     file_path.write_bytes(content)
 
     document = Document(
+        user_id=current_user.id,
         filename=file.filename,
         file_type=extension.lstrip("."),
         file_size=len(content),
@@ -82,8 +86,8 @@ async def upload_document(
 
 
 @router.get("/{document_id}")
-def get_document(document_id: int, db: Session = Depends(get_db)):
-    document = db.get(Document, document_id)
+def get_document(document_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    document = db.scalar(select(Document).where(Document.id == document_id, Document.user_id == current_user.id))
 
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -102,10 +106,11 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
 
 @router.get("")
 def list_documents(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     documents = db.scalars(
-        select(Document).order_by(
+        select(Document).where(Document.user_id == current_user.id).order_by(
             Document.created_at.desc()
         )
     ).all()
